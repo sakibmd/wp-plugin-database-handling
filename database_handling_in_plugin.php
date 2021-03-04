@@ -16,6 +16,7 @@
  */
 
 // Register Custom Post Type Book
+require_once "class.dbdemousers.php";
 define('DBDEMO_DB_VERSION', '1.3');
 function dbdemo_init()
 {
@@ -30,8 +31,8 @@ function dbdemo_init()
     );";
     require_once ABSPATH . "wp-admin/includes/upgrade.php";
     dbDelta($sql);
-
     add_option('dbdemo_db_version', DBDEMO_DB_VERSION);
+
     if (get_option('dbdemo_db_version') != DBDEMO_DB_VERSION) {
         $sql = "CREATE TABLE {$table_name} (
             id INT NOT NULL AUTO_INCREMENT,
@@ -94,6 +95,21 @@ add_action('admin_menu', function () {
 
 function dbdemo_display_data()
 {
+    
+    global $wpdb;
+	if ( isset( $_GET['pid'] ) ) {
+		if ( ! isset( $_GET['n'] ) || ! wp_verify_nonce( $_GET['n'], "dbdemo_edit" ) ) {
+			wp_die( __( "Sorry you are not authorized to do this", "database-demo" ) );
+		}
+
+		if ( isset( $_GET['action'] ) && $_GET['action'] == 'delete' ) {
+			$wpdb->delete( "{$wpdb->prefix}persons", [ 'id' => sanitize_key( $_GET['pid'] ) ] );
+			$_GET['pid'] = null;
+		}
+	}
+    
+    
+    
     global $wpdb;
     $table_name = $wpdb->prefix . 'persons';
     echo "<h2>DB Demo</h2>";
@@ -105,26 +121,54 @@ function dbdemo_display_data()
             echo "Name: {$result->name} <br/>";
             echo "Email: {$result->email} <br/>";
         }
-
     }
     ?>
-    <form action="<?php echo admin_url('admin-post.php')?>" method="POST">
-    <?php wp_nonce_field('dbdemo', 'nonce')?>
+    <form action="<?php echo admin_url('admin-post.php') ?>" method="POST">
+    <?php wp_nonce_field('dbdemo', 'nonce');   ?>
     <input type="hidden" name="action" value="dbdemo_add_new">
-       Name: <input type="text" name="name" value="<?php if($id) echo $result->name ?>"><br/>
-       Email: <input type="email" name="email" value="<?php if($id) echo $result->email ?>"><br/>
+       Name: <input type="text" name="name" value="<?php if ($id) {
+        echo $result->name;
+    }
+    ?>"><br/>
+       Email: <input type="text" name="email" value="<?php if ($id) {
+        echo $result->email;
+    }
+    ?>"><br/>
 
-<?php 
-if($id){
-    echo '<input type="hidden" name="id" value="'.$id.'" >';
-    submit_button('Update Record');
-}else{
-    submit_button('Add Record');
-}
+<?php
+if ($id) {
+        echo '<input type="hidden" name="id" value="' . $id . '" >';
+        submit_button('Update Record');
+    } else {
+        submit_button('Add Record');
+    }
 
-?>
-    
+    ?>
+
    </form>
+
+
+<!-- show data into table  | start -->
+   <div class="form_box" style="margin-top: 30px;">
+        <div class="form_box_header">
+			<?php _e( 'Users', 'database_handling_in_plugin' ) ?>
+        </div>
+        <div class="form_box_content">
+			<?php
+			global $wpdb;
+			$dbdemo_users = $wpdb->get_results( "SELECT id, name, email FROM {$wpdb->prefix}persons ORDER BY id DESC", ARRAY_A );
+			$dbtu         = new DBTableUsers( $dbdemo_users );
+			$dbtu->prepare_items();
+			$dbtu->display();
+			?>
+        </div>
+    </div>
+<!-- show data into table  | end -->
+
+
+
+
+
    <?php
 // if (isset($_POST['submit'])) {
     //     $nonce = sanitize_text_field($_POST['nonce']);
@@ -140,11 +184,9 @@ if($id){
     //     }
     // }
 
-   
-
 }
 
-add_action('admin_post_dbdemo_add_new', function () {
+add_action('admin_post_dbdemo_add_new', function () {   //admin_post_  er shate dbdemo_add_new (uporer hidden value) add concat korte hobe insert korte hole
     global $wpdb;
     $table_name = $wpdb->prefix . 'persons';
     $nonce = sanitize_text_field($_POST['nonce']);
@@ -153,17 +195,20 @@ add_action('admin_post_dbdemo_add_new', function () {
         $name = sanitize_text_field($_POST['name']);
         $email = sanitize_text_field($_POST['email']);
         $id = sanitize_text_field($_POST['id']);
-        if($id){
+        
+        if ($id) {
             $wpdb->update(
                 $table_name,
                 array(
                     'name' => $name,
                     'email' => $email,
                 ),
+
                 ['id' => $id], //where reference
             );
-            wp_redirect(admin_url('admin.php?page=dbdemo&pid='.$id));
-        }else{
+            $nonce = wp_create_nonce( "dbdemo_edit" );
+			wp_redirect( admin_url( 'admin.php?page=dbdemo&pid=' ) . $id . "&n={$nonce}" );
+        } else {
             $wpdb->insert(
                 $table_name,
                 array(
@@ -174,19 +219,15 @@ add_action('admin_post_dbdemo_add_new', function () {
             wp_redirect(admin_url('admin.php?page=dbdemo'));
         }
     }
-    
 
-
-    add_action('admin_enqueue_scripts', function($hook){
-        if("toplevel_menu_dbdemo" == $hook){
-            wp_enqueue_style('dbdemo-style', plugin_dir_url(__FILE__)."/assets/admin/css/main.css");
-        }
-    });
-
-    
-        
-       
-        
-    
-    
 });
+
+
+function dbdemo_main_css($hook)
+{
+    if ("toplevel_page_dbdemo" == $hook) {
+        wp_enqueue_style('dbdemo-main', plugin_dir_url(__FILE__) . "/assets/admin/css/main.css");
+    }
+}
+add_action('admin_enqueue_scripts', 'dbdemo_main_css');
+
